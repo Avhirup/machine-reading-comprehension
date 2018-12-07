@@ -84,19 +84,26 @@ def group_query_passage(dataframe):
 
 
 def dump_dataframe(data,dump_path):
-	for index in data.index:
+	for index in tqdm(data.index):
 		_id=data['QID'].iloc[index]
 		with open(dump_path+f"/{_id}.pkl","wb") as f:
 			pkl.dump(data.iloc[index,:],f)	
 
 def convert_data_to_rows(data_path="../data/train.tsv",dump_path="../data/data_rows/"):
-	data_generator=pd.read_csv(data_path,header=None,sep="\t",names=['QID',"Query","Passage","Relevance","PassageID"],chunksize=100)
-	for data in tqdm(data_generator):
-		data=group_query_passage(data)
-		dump_dataframe(data,dump_path)
+	data=pd.read_csv(data_path,header=None,sep="\t",names=['QID',"Query","Passage","Relevance","PassageID"])
+	print (111)
+	data=group_query_passage(data)
+	print (111)
+	dump_dataframe(data,dump_path)
 
 
 
+
+def k(x):
+	with open(x,"rb") as f:
+		d=pkl.load(f).to_dict()
+		if len(d['Passages'])!=10:
+			print(d['QID'],len(d['Passages']))
 
 
 
