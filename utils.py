@@ -74,10 +74,10 @@ def process_sentence(sentence,tokenizer,model,MAX_SEQ_LEN=128):
 def format(dataframe):
 	return pd.DataFrame.from_dict(dict(QID=dataframe['QID'].iloc[0],
 		Query=dataframe['Query'].iloc[0],
-		Passages=list(map(lambda x:x.encode('utf-8',errors="ignore"),dataframe["Passage"].tolist())),
-		Relevance=np.array(dataframe["Relevance"].tolist()),
-		PassageID=np.array(dataframe["PassageID"].tolist()),
-		RelevantPassage=np.argmax(np.array(dataframe["Relevance"].tolist()))),orient='index').T
+		Passages=list(map(lambda x:x.encode('utf-8',errors="ignore"),dataframe["Passage"].drop_duplicates().tolist())),
+		Relevance=np.array(dataframe["Relevance"].drop_duplicates().tolist()),
+		PassageID=np.array(dataframe["PassageID"].drop_duplicates().tolist()),
+		RelevantPassage=np.argmax(np.array(dataframe["Relevance"].drop_duplicates().tolist()))),orient='index').T
 
 def group_query_passage(dataframe):
 	return dataframe.groupby("QID",as_index=False).apply(lambda x:format(x)).reset_index(drop=True)
@@ -89,25 +89,26 @@ def dump_dataframe(data,dump_path):
 		with open(dump_path+f"/{_id}.pkl","wb") as f:
 			pkl.dump(data.iloc[index,:],f)	
 
-def convert_data_to_rows(data_path="../data/train.tsv",dump_path="../data/data_rows/"):
+def convert_data_to_rows(data_path="../data/data.tsv",dump_path="../data/data_rows/"):
 	data=pd.read_csv(data_path,header=None,sep="\t",names=['QID',"Query","Passage","Relevance","PassageID"])
-	print (111)
+	print(111)
 	data=group_query_passage(data)
-	print (111)
+	print(111)
 	dump_dataframe(data,dump_path)
-
-
-
 
 def k(x):
 	with open(x,"rb") as f:
 		d=pkl.load(f).to_dict()
 		if len(d['Passages'])!=10:
 			print(d['QID'],len(d['Passages']))
+			return False
+		else:
+			return True
 
+# convert_data_to_rows()
+import pickle as pkl
 
-
-		
-
+with open("list_of_valid.pkl","wb") as f:
+	pkl.dump(list(filter(lambda x: k(x),glob("../data/data_rows/*"))))
 
 
