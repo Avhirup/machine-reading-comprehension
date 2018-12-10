@@ -4,6 +4,8 @@ import numpy as np
 import pickle as pkl 
 from tqdm import tqdm
 from glob import glob
+import gc
+import h5py
 
 from torch.utils.data import Dataset 
 
@@ -25,24 +27,13 @@ class MRCDataset(Dataset):
 
 	def __getitem__(self,index):
 		#traverse to the file
-		with open(f"{self.data_path}/{index}.pkl","rb") as f:
-			d=pkl.load(f).to_dict()
-		query=d['Query']
-		passages=d['Passages']
-		label=d['RelevantPassage']
-		passage_tensor=[]
-		query_tensor=process_sentence(str(query),self.tokenizer,self.model)
-		while len(passages)<10:
-			passages.append(" ")
-		while len(passages)>10:
-			passages.pop()
-		for passage in passages:
-			passage_tensor.append(process_sentence(str(passage),self.tokenizer,self.model))
-		passage_tensor=torch.cat(passage_tensor,0)
-		label=torch.LongTensor([label])
-		return query_tensor,passage_tensor,label
+		with h5py.File(f"{self.data_path}/{index}.hdf5","r") as f:
+			query=f['query'].value
+			passages=f['passages'].value
+			label=f['label'].value
+		return query,passages,label
 
-def process_sentence(sentence,tokenizer,model,MAX_SEQ_LEN=128):
+def process_sentence(sentence,tokenizer,model,MAX_SEQ_LEN=128,is_cuda=True):
 	
 	tokens_sent=tokenizer.tokenize(sentence)
 	tokens = []
@@ -63,29 +54,29 @@ def process_sentence(sentence,tokenizer,model,MAX_SEQ_LEN=128):
 		input_ids.append(0)
 		input_mask.append(0)
 		segment_ids.append(0)
-	try:
-		assert len(input_ids) == MAX_SEQ_LEN
-		assert len(input_mask) == MAX_SEQ_LEN
-		assert len(segment_ids) == MAX_SEQ_LEN
+	while len(input_ids)>MAX_SEQ_LEN:
+		input_ids.pop()
+		input_mask.pop()
+		segment_ids.pop()
+	assert len(input_ids) == MAX_SEQ_LEN
+	assert len(input_mask) == MAX_SEQ_LEN
+	assert len(segment_ids) == MAX_SEQ_LEN
 
-		input_mask=torch.LongTensor([input_mask])
-		input_ids=torch.LongTensor([input_ids])
-		segment_ids=torch.LongTensor([segment_ids])
-	except:
-		input_mask=torch.LongTensor([[0]*MAX_SEQ_LEN])
-		input_ids=torch.LongTensor([[0]*MAX_SEQ_LEN])
-		segment_ids=torch.LongTensor([[0]*MAX_SEQ_LEN])
-
+	input_mask=torch.LongTensor([input_mask])
+	input_ids=torch.LongTensor([input_ids])
+	segment_ids=torch.LongTensor([segment_ids])
+	if is_cuda:
+		input_ids,input_mask,segment_ids=input_ids.cuda(),input_mask.cuda(),segment_ids.cuda()
 	all_encoder_layers, pooled_output = model(input_ids,segment_ids,attention_mask=input_mask, output_all_encoded_layers=False)
 	return pooled_output
 
 def format(dataframe):
 	return pd.DataFrame.from_dict(dict(QID=dataframe['QID'].iloc[0],
 		Query=dataframe['Query'].iloc[0],
-		Passages=list(map(lambda x:x.encode('utf-8',errors="ignore"),dataframe["Passage"].drop_duplicates().tolist())),
-		Relevance=np.array(dataframe["Relevance"].drop_duplicates().tolist()),
-		PassageID=np.array(dataframe["PassageID"].drop_duplicates().tolist()),
-		RelevantPassage=np.argmax(np.array(dataframe["Relevance"].drop_duplicates().tolist()))),orient='index').T
+		Passages=list(map(lambda x:x.encode('utf-8',errors="ignore"),dataframe["Passage"].tolist())),
+		Relevance=np.array(dataframe["Relevance"].tolist()),
+		PassageID=np.array(dataframe["PassageID"].tolist()),
+		RelevantPassage=np.argmax(np.array(dataframe["Relevance"].tolist()))),orient='index').T
 
 def group_query_passage(dataframe):
 	return dataframe.groupby("QID",as_index=False).apply(lambda x:format(x)).reset_index(drop=True)
@@ -103,6 +94,33 @@ def convert_data_to_rows(data_path="../data/data.tsv",dump_path="../data/data_ro
 	data=group_query_passage(data)
 	print(111)
 	dump_dataframe(data,dump_path)
+
+def dump_row(data,dump_path="../data/data_h5py/"):
+	model_type="bert-base-uncased"
+	model=BertModel.from_pretrained(model_type).cuda()
+	tokenizer=BertTokenizer.from_pretrained(model_type)
+	for index in tqdm(data.index):
+		_id=data['QID'].iloc[index]
+		d=data.iloc[index].to_dict()
+		query=d['Query']
+		passages=d['Passages']
+		label=d['RelevantPassage']
+		query_tensor=process_sentence(str(query),tokenizer,model).cpu().detach().numpy()
+		passage_tensor=[]
+		for passage in passages:
+			passage_tensor.append(process_sentence(str(passage),tokenizer,model))
+		passage_tensor=torch.cat(passage_tensor,0).cpu().detach().numpy()
+		label=torch.LongTensor([label]).numpy()
+
+		data_dict=dict(query=query_tensor,passages=passage_tensor,label=label)
+		with h5py.File(f'{dump_path}/{_id}.hdf5','w') as h: 
+			for k, v in data_dict.items():
+				h.create_dataset(k, data=v)
+		del data_dict
+		del passage_tensor
+		del query_tensor
+		gc.collect()
+
 
 def k(x):
 	with open(x,"rb") as f:
