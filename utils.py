@@ -9,7 +9,7 @@ from torch.utils.data import Dataset
 
 from pytorch_pretrained_bert.tokenization import BertTokenizer
 from pytorch_pretrained_bert.modeling import BertModel,BertConfig
-
+SENTENCE_COUNTER=0
 class MRCDataset(Dataset):
 	"""docstring for Dataset"""
 	def __init__(self, data_path,model_type="bert-base-uncased"):
@@ -32,6 +32,10 @@ class MRCDataset(Dataset):
 		label=d['RelevantPassage']
 		passage_tensor=[]
 		query_tensor=process_sentence(str(query),self.tokenizer,self.model)
+		while len(passages)<10:
+			passages.append(" ")
+		while len(passages)>10:
+			passages.pop()
 		for passage in passages:
 			passage_tensor.append(process_sentence(str(passage),self.tokenizer,self.model))
 		passage_tensor=torch.cat(passage_tensor,0)
@@ -39,10 +43,10 @@ class MRCDataset(Dataset):
 		return query_tensor,passage_tensor,label
 
 def process_sentence(sentence,tokenizer,model,MAX_SEQ_LEN=128):
+	
 	tokens_sent=tokenizer.tokenize(sentence)
 	tokens = []
 	segment_ids = []
-
 	tokens.append("[CLS]")
 	segment_ids.append(0)
 	for token in tokens_sent:
@@ -59,14 +63,18 @@ def process_sentence(sentence,tokenizer,model,MAX_SEQ_LEN=128):
 		input_ids.append(0)
 		input_mask.append(0)
 		segment_ids.append(0)
+	try:
+		assert len(input_ids) == MAX_SEQ_LEN
+		assert len(input_mask) == MAX_SEQ_LEN
+		assert len(segment_ids) == MAX_SEQ_LEN
 
-	assert len(input_ids) == MAX_SEQ_LEN
-	assert len(input_mask) == MAX_SEQ_LEN
-	assert len(segment_ids) == MAX_SEQ_LEN
-
-	input_mask=torch.LongTensor([input_mask])
-	input_ids=torch.LongTensor([input_ids])
-	segment_ids=torch.LongTensor([segment_ids])
+		input_mask=torch.LongTensor([input_mask])
+		input_ids=torch.LongTensor([input_ids])
+		segment_ids=torch.LongTensor([segment_ids])
+	except:
+		input_mask=torch.LongTensor([[0]*MAX_SEQ_LEN])
+		input_ids=torch.LongTensor([[0]*MAX_SEQ_LEN])
+		segment_ids=torch.LongTensor([[0]*MAX_SEQ_LEN])
 
 	all_encoder_layers, pooled_output = model(input_ids,segment_ids,attention_mask=input_mask, output_all_encoded_layers=False)
 	return pooled_output
@@ -105,10 +113,5 @@ def k(x):
 		else:
 			return True
 
-# convert_data_to_rows()
-import pickle as pkl
-
-with open("list_of_valid.pkl","wb") as f:
-	pkl.dump(list(filter(lambda x: k(x),glob("../data/data_rows/*"))))
 
 
