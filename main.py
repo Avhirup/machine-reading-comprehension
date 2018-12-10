@@ -34,7 +34,7 @@ def train(model,optimizer,train_dl,criterion,epoch,is_cuda=True):
 	model.train()
 	for i, data in enumerate(train_dl, 0):
 		# get the inputs
-		query_tensor,passage_tensor,labels = data
+		(query_tensor,passage_tensor),labels = data
 		if is_cuda:
 			query_tensor,passage_tensor,labels=query_tensor.cuda(),passage_tensor.cuda(),labels.cuda()
 		# zero the parameter gradients
@@ -48,32 +48,35 @@ def train(model,optimizer,train_dl,criterion,epoch,is_cuda=True):
 		# print statistics
 		running_loss += loss.item()
 		if i%100==0:
-			print(f"Loss {running_loss} epoch {epoch} i {i}")
+			print(f"Running Loss {running_loss}  Loss {loss.item()} epoch {epoch} i {i}")
 			running_loss = 0.0
+	return model
 
 def valid(model,valid_dl,criterion,epoch,is_cuda=True):
 	running_loss=0
 	accuracy=0
+	correct=0
 	model.eval()
 	for i, data in enumerate(valid_dl, 0):
 		# get the inputs
-		query_tensor,passage_tensor,labels = data
+		(query_tensor,passage_tensor),labels = data
 		if is_cuda:
 			query_tensor,passage_tensor,labels=query_tensor.cuda(),passage_tensor.cuda(),labels.cuda()
 		# forward + backward + optimize
 		outputs = model(query_tensor,passage_tensor)
 		loss = criterion(outputs, labels.view(-1))
 		max_index = outputs.max(dim = 1)[1]
-		correct=(max_index == labels.view(-1)).sum()
+		correct+=(max_index == labels.view(-1)).sum()
 		running_loss += loss.item()
 		if i%100==0:
-			print(f"Loss {running_loss} epoch {epoch} i {i} Correct {correct}")
+			print(f"Running Loss {running_loss} Loss {loss.item()} epoch {epoch} i {i} Correct {correct}")
 			running_loss = 0.0
+	print(f"Accuracy {correct/(i*8)}")
 
 def main():
 	parser = argparse.ArgumentParser()
 	dataset=MRCDataset("../data/data_h5py/")
-	indices=range(dataset.__len__())
+	indices=range(1,dataset.__len__())
 	train_indices=indices[1:int(0.9*len(indices))]
 	valid_indices=indices[-int(0.9*len(indices)):]
 	train_sampler=SubsetRandomSampler(train_indices)
@@ -84,11 +87,11 @@ def main():
 
 	model=SimpleCNNModel().cuda()
 	criterion = nn.CrossEntropyLoss()
-	optimizer = optim.Adam(model.parameters(), lr=1e-2)
+	optimizer = optim.Adam(model.parameters(), lr=1e-1)
 	is_cuda=True
 	NUM_OF_EPOCHS=5
-	for epoch in range(1):  # loop over the dataset multiple times
-		train(model,optimizer,train_dl,criterion,epoch)
+	for epoch in range(NUM_OF_EPOCHS):  # loop over the dataset multiple times
+		model=train(model,optimizer,train_dl,criterion,epoch)
 		if epoch%1==0:
 			valid(model,valid_dl,criterion,epoch)
 

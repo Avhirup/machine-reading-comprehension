@@ -19,8 +19,6 @@ class MRCDataset(Dataset):
 		self.data_path=data_path
 		self.data_files=glob(data_path+"/*")
 		self.model_type = model_type
-		self.model=BertModel.from_pretrained(model_type)
-		self.tokenizer=BertTokenizer.from_pretrained(model_type)
 
 	def __len__(self):
 		return len(self.data_files)
@@ -31,7 +29,7 @@ class MRCDataset(Dataset):
 			query=f['query'].value
 			passages=f['passages'].value
 			label=f['label'].value
-		return query,passages,label
+		return [query,passages],label
 
 def process_sentence(sentence,tokenizer,model,MAX_SEQ_LEN=128,is_cuda=True):
 	
