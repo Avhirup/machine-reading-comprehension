@@ -28,7 +28,7 @@ class MRCDataset(Dataset):
 		with h5py.File(f"{self.data_path}/{index}.hdf5","r") as f:
 			query=f['query'].value
 			passages=f['passages'].value
-			label=f['label'].value
+			label=f['label'].value[0]
 		return [query,passages],label
 
 def process_sentence(sentence,tokenizer,model,MAX_SEQ_LEN=128,is_cuda=True):

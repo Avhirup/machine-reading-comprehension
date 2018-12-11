@@ -32,6 +32,10 @@ logger = logging.getLogger(__name__)
 def train(model,optimizer,train_dl,criterion,epoch,is_cuda=True):
 	running_loss = 0.0
 	model.train()
+	if next(model.parameters()).is_cuda:
+		print("On cuda")
+	else:
+		print("not on cuda")
 	for i, data in enumerate(train_dl, 0):
 		# get the inputs
 		(query_tensor,passage_tensor),labels = data
@@ -50,7 +54,6 @@ def train(model,optimizer,train_dl,criterion,epoch,is_cuda=True):
 		if i%100==0:
 			print(f"Running Loss {running_loss}  Loss {loss.item()} epoch {epoch} i {i}")
 			running_loss = 0.0
-	return model
 
 def valid(model,valid_dl,criterion,epoch,is_cuda=True):
 	running_loss=0
@@ -82,20 +85,25 @@ def main():
 	train_sampler=SubsetRandomSampler(train_indices)
 	valid_sampler=SubsetRandomSampler(valid_indices)
 	batch_size=8
-	train_dl = DataLoader(dataset, batch_size=batch_size, sampler=train_sampler)
-	valid_dl = DataLoader(dataset, batch_size=batch_size, sampler=valid_sampler)
+	train_dl = DataLoader(dataset, batch_size=batch_size, sampler=train_sampler,num_workers=4)
+	valid_dl = DataLoader(dataset, batch_size=batch_size, sampler=valid_sampler,num_workers=4)
 
 	model=SimpleCNNModel().cuda()
+
 	criterion = nn.CrossEntropyLoss()
-	optimizer = optim.Adam(model.parameters(), lr=1e-1)
+	optimizer = optim.Adam(model.parameters(), lr=5e-4)
 	is_cuda=True
 	NUM_OF_EPOCHS=5
-	for epoch in range(NUM_OF_EPOCHS):  # loop over the dataset multiple times
-		model=train(model,optimizer,train_dl,criterion,epoch)
-		if epoch%1==0:
-			valid(model,valid_dl,criterion,epoch)
-
-
+	# for epoch in range(NUM_OF_EPOCHS):  # loop over the dataset multiple times
+	# 	train(model,optimizer,train_dl,criterion,epoch)
+	# 	if epoch%1==0:
+	# 		valid(model,valid_dl,criterion,epoch)
+	# torch.save(model,open("simplemodel.pth","wb"))
+	databunch=DataBunch(train_dl,valid_dl,device=torch.device('cuda'))
+	learner=Learner(databunch,model,loss_func=criterion,metrics=accuracy,callback_fns=ShowGraph)
+	learner.lr_find()
+	learner.fit_one_cycle(1,5e-5)
+	learner.save("fastaimodel.pth")
 	print('Finished Training')
 
 
